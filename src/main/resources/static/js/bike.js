@@ -1,9 +1,11 @@
-// 🚲 따릉이 마커 관련 전역 상태
-let bikeMarkers = [];
-let allBikeStations = [];
-let bikeRoutePolyline = null; // 경로 선
-let bikeRouteLabel = null;    // 경로 시간 라벨
+// 🚲 따릉이 마커 및 경로 관련 전역 상태
+let bikeMarkers = [];                 // 따릉이 마커 목록
+let allBikeStations = [];            // 전체 대여소 데이터
+let bikeRoutePolyline = null;        // 경로 선
+let bikeRouteLabel = null;           // 경로 시간 라벨
+let isBikeRouting = false;           // 경로 안내 중 여부
 
+// 📌 사용자 위치 및 추천 대여소 관련 전역
 window.userPositionMarker = null;
 window.recommendedStation = null;
 window.activeInfoWindow = null;
@@ -11,7 +13,7 @@ window.userLat = null;
 window.userLng = null;
 window.skipBikeRecommendation = false;
 
-// ✅ 마커 모두 제거
+// ✅ 모든 마커 및 경로 제거
 window.clearBikeStations = function () {
   bikeMarkers.forEach(m => m.marker.setMap(null));
   bikeMarkers = [];
@@ -21,20 +23,18 @@ window.clearBikeStations = function () {
     window.activeInfoWindow = null;
   }
 
-  // ✅ 경로 제거
   if (bikeRoutePolyline) {
     bikeRoutePolyline.setMap(null);
     bikeRoutePolyline = null;
   }
 
-  // ✅ 경로 라벨 제거
   if (bikeRouteLabel) {
     bikeRouteLabel.close();
     bikeRouteLabel = null;
   }
 };
 
-// ✅ 거리 계산 함수
+// ✅ 위도/경도 거리 계산 함수 (Haversine)
 function getDistance(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -45,17 +45,18 @@ function getDistance(lat1, lon1, lat2, lon2) {
   return R * c * 1000;
 }
 
-// ✅ 내 위치로 이동하고 추천 마커 띄우기
+// ✅ 내 위치로 이동 + 사용자 마커 표시
 window.moveToMyLocation = function (skipRecommendation = false) {
   if (!navigator.geolocation) return alert("위치 정보를 지원하지 않습니다.");
 
   navigator.geolocation.getCurrentPosition(pos => {
-    // ✅ 전역으로 위치 저장
     window.userLat = pos.coords.latitude;
     window.userLng = pos.coords.longitude;
+
     const userPos = new naver.maps.LatLng(window.userLat, window.userLng);
 
     if (window.userPositionMarker) window.userPositionMarker.setMap(null);
+
     window.userPositionMarker = new naver.maps.Marker({
       position: userPos,
       map,
@@ -63,16 +64,12 @@ window.moveToMyLocation = function (skipRecommendation = false) {
       zIndex: 999
     });
 
-    map.panTo(userPos);
-
-    // ✅ 대여소 불러오기 (비동기)
-    window.loadBikeStations();
-
-    // ✅ 추천 생략 옵션 처리 (true면 추천 안 함)
+    map.panTo(userPos); // idle 이벤트를 통해 마커 자동 로딩
     window.skipBikeRecommendation = skipRecommendation;
   }, () => alert("위치 정보를 가져올 수 없습니다."));
 };
 
+// ✅ 가장 가까운 추천 대여소 계산 및 표시
 window.recommendNearestStation = function () {
   if (!window.userLat || !window.userLng) return;
 
@@ -104,6 +101,7 @@ window.recommendNearestStation = function () {
       거리: ${Math.round(best.distance)}m<br/>
       <div class="mt-2 d-flex gap-2">
         <button onclick="goToNaverRoute()" class="btn btn-sm btn-outline-primary">🧭 안내</button>
+        <button onclick="cancelBikeRoute()" class="btn btn-sm btn-outline-danger">❌ 경로취소</button>
       </div>
     </div>
   `;
@@ -116,7 +114,7 @@ window.recommendNearestStation = function () {
   window.activeInfoWindow.open(map, best.marker);
 };
 
-// ✅ 내부 길찾기
+// ✅ 추천 대여소까지 경로 탐색 및 경로/라벨 표시
 window.goToNaverRoute = function () {
   if (!navigator.geolocation) return alert("위치 정보를 지원하지 않습니다.");
 
@@ -137,38 +135,43 @@ window.goToNaverRoute = function () {
       .then(res => res.json())
       .then(data => {
         const route = data?.route?.trafast?.[0];
-
         if (!route?.path) return alert("경로를 불러올 수 없습니다.");
 
-        const durationMin = Math.round(route.summary?.duration / 60000); // 소요 시간 계산
-        const path = route.path;
-        const linePath = path.map(([lng, lat]) => new naver.maps.LatLng(lat, lng));
+        isBikeRouting = true; // ✅ 경로 안내 시작
 
+        const durationMin = Math.round(route.summary?.duration / 60000);
+        const path = route.path.map(([lng, lat]) => new naver.maps.LatLng(lat, lng));
+
+        // ✅ 경로 선 표시
         bikeRoutePolyline = new naver.maps.Polyline({
-          path: linePath,
-          map: map,
+          path,
+          map,
           strokeColor: '#0d6efd',
           strokeWeight: 6,
           strokeOpacity: 0.9,
           strokeStyle: 'solid'
         });
 
-        // 중간 지점 계산
-        const midpointIndex = Math.floor(path.length / 2);
-        const [midLng, midLat] = path[midpointIndex];
-        const midpoint = new naver.maps.LatLng(midLat, midLng);
-
+        // ✅ 중간 지점에 라벨 표시
+        const mid = path[Math.floor(path.length / 2)];
         bikeRouteLabel = new naver.maps.InfoWindow({
           content: `<div style="font-size:14px; padding:6px 12px;">🕒 예상 소요시간: <strong>${durationMin}분</strong></div>`,
-          position: midpoint,
+          position: mid,
           pixelOffset: new naver.maps.Point(0, -20),
           backgroundColor: '#fff',
           borderColor: '#0d6efd',
           borderWidth: 1
         });
-        bikeRouteLabel.open(map);
 
-        map.panTo(new naver.maps.LatLng(stationLatitude, stationLongitude));
+        bikeRouteLabel.open(map);
+        map.panTo(mid);
+
+        // ✅ 추천 마커만 남기고 나머지 제거
+        bikeMarkers.forEach(b => {
+          if (b.position.lat() !== stationLatitude || b.position.lng() !== stationLongitude) {
+            b.marker.setMap(null);
+          }
+        });
       })
       .catch(err => {
         console.error("❌ 경로 불러오기 실패", err);
@@ -178,8 +181,37 @@ window.goToNaverRoute = function () {
   }, () => alert("위치 정보를 가져올 수 없습니다."));
 };
 
-// ✅ API 호출해서 전체 대여소 정보 저장
+// ✅ 경로 취소: 상태 초기화 + 마커 재로딩
+window.cancelBikeRoute = function () {
+  console.log("🔁 경로 취소 → 초기화 및 마커 다시 표시");
+
+  isBikeRouting = false;
+
+  if (bikeRoutePolyline) {
+    bikeRoutePolyline.setMap(null);
+    bikeRoutePolyline = null;
+  }
+
+  if (bikeRouteLabel) {
+    bikeRouteLabel.close();
+    bikeRouteLabel = null;
+  }
+
+  if (window.activeInfoWindow) {
+    window.activeInfoWindow.close();
+    window.activeInfoWindow = null;
+  }
+
+  window.recommendedStation = null;
+
+  window.clearBikeStations?.();
+  window.moveToMyLocation?.(); // 내 위치로 복귀 → idle에서 마커 다시 그림
+};
+
+// ✅ 따릉이 API 호출 → 전체 대여소 목록 저장 + 현재 보이는 마커 렌더링
 window.loadBikeStations = function () {
+  if (isBikeRouting) return; // ✅ 경로 중일 땐 새로고침 무시
+
   const apiUrl = 'http://openapi.seoul.go.kr:8088/75436b6c78776a643536507267774e/json/bikeList/1/1000/';
 
   fetch(apiUrl)
@@ -188,9 +220,7 @@ window.loadBikeStations = function () {
       allBikeStations = data?.rentBikeStatus?.row || [];
       console.log("✅ 따릉이 수:", allBikeStations.length);
       window.renderVisibleBikeMarkers();
-      console.log("🗺️ 현재 bounds:", map.getBounds());
 
-      // ✅ 내 위치와 추천이 허용된 상태면 추천 실행
       if (!window.skipBikeRecommendation && window.userLat && window.userLng) {
         window.recommendNearestStation();
       }
@@ -201,7 +231,7 @@ window.loadBikeStations = function () {
     });
 };
 
-// ✅ 현재 보이는 범위 내 마커만 표시
+// ✅ 현재 지도 범위 내 대여소 마커 렌더링
 window.renderVisibleBikeMarkers = function () {
   const bounds = map.getBounds();
   window.clearBikeStations();
@@ -211,13 +241,9 @@ window.renderVisibleBikeMarkers = function () {
     const lng = parseFloat(station.stationLongitude);
     const name = station.stationName.replace(/^\d+\.\s*/, '');
     const bikeCount = parseInt(station.parkingBikeTotCnt);
-
     if (isNaN(lat) || isNaN(lng)) return;
 
     const position = new naver.maps.LatLng(lat, lng);
-
-    // console.log("🔍 마커 후보:", lat, lng, bounds.hasLatLng(new naver.maps.LatLng(lat, lng)));
-
     if (!bounds.hasLatLng(position)) return;
 
     const defaultImageUrl =
@@ -248,6 +274,7 @@ window.renderVisibleBikeMarkers = function () {
         <strong style="color:#0d6efd;">🚲 ${name}</strong><br/>
         잔여: ${bikeCount}대<br/>
         <button onclick="goToNaverRoute()" class="btn btn-sm btn-outline-primary mt-2">🧭 안내</button>
+        <button onclick="cancelBikeRoute()" class="btn btn-sm btn-outline-danger mt-2">❌ 경로취소</button>
       </div>
     `;
 
@@ -257,19 +284,11 @@ window.renderVisibleBikeMarkers = function () {
     });
 
     naver.maps.Event.addListener(marker, 'mouseover', () => {
-      marker.setIcon({
-        url: hoverImageUrl,
-        size: imageSize,
-        anchor: imageAnchor
-      });
+      marker.setIcon({ url: hoverImageUrl, size: imageSize, anchor: imageAnchor });
     });
 
     naver.maps.Event.addListener(marker, 'mouseout', () => {
-      marker.setIcon({
-        url: defaultImageUrl,
-        size: imageSize,
-        anchor: imageAnchor
-      });
+      marker.setIcon({ url: defaultImageUrl, size: imageSize, anchor: imageAnchor });
     });
 
     naver.maps.Event.addListener(marker, 'click', () => {
@@ -291,6 +310,7 @@ window.renderVisibleBikeMarkers = function () {
   });
 };
 
+// ✅ 전역에서 접근 가능하도록 등록
 window.moveToMyLocation = moveToMyLocation;
 window.clearBikeStations = clearBikeStations;
 window.loadBikeStations = loadBikeStations;

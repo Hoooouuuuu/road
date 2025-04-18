@@ -1,13 +1,14 @@
 package com.cctv.road.map.controller;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
-import org.springframework.ui.Model;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import reactor.core.publisher.Mono;
@@ -184,24 +185,26 @@ public class NaverProxyController {
    */
   @GetMapping("/traffic-data")
   public Mono<String> getTrafficData() {
-    String apiUrl = "https://apis.data.go.kr/1613000/ITS/getLinkTrafficSpeed" +
-        "?serviceKey=" + itsApiKey +
-        "&type=json" +
-        "&numOfRows=1000" +
-        "&pageNo=1" +
-        "&cityCode=11";
-
-    return WebClient.create()
-        .get()
-        .uri(apiUrl)
+    String url = "https://openapi.its.go.kr:9443/vdsInfo?apiKey=" + itsApiKey + "&getType=json";
+  
+    WebClient trafficClient = WebClient.builder().baseUrl("https://openapi.its.go.kr:9443").build();
+  
+    return trafficClient.get()
+        .uri(uriBuilder -> uriBuilder
+            .path("/vdsInfo")
+            .queryParam("apiKey", itsApiKey)
+            .queryParam("getType", "json")
+            .build())
         .accept(MediaType.APPLICATION_JSON)
         .retrieve()
-        .onStatus(HttpStatusCode::isError, res -> {
-          return res.bodyToMono(String.class).flatMap(body -> {
-            System.err.println("❌ ITS API Error Response: " + body);
-            return Mono.error(new RuntimeException("ITS API 호출 실패: " + body));
-          });
+        .onStatus(status -> status.isError(), res -> {
+          System.err.println("❌ ITS API 호출 실패: " + res.statusCode());
+          return res.bodyToMono(String.class)
+              .flatMap(error -> {
+                System.err.println("❌ 응답 내용: " + error);
+                return Mono.error(new RuntimeException("ITS API 호출 에러"));
+              });
         })
         .bodyToMono(String.class);
-  }
+  }  
 }

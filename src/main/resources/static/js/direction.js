@@ -7,6 +7,7 @@ let routeActive = false;
 let searchTimeout = null;
 let startMarker = null;
 let goalMarker = null;
+let mapClickListener = null;
 
 // ✅ 출발지 / 도착지 전역 상태
 window.routeStart = { lat: null, lng: null, label: "내 위치" };
@@ -42,11 +43,21 @@ window.setStartToCurrentLocation = function () {
 
 // ✅ 경로 클릭 이벤트
 window.initRouteEvents = function () {
-  naver.maps.Event.addListener(window.map, 'click', function (e) {
+  if (mapClickListener) return; // 이미 등록됐으면 무시
+
+  mapClickListener = naver.maps.Event.addListener(window.map, 'click', function (e) {
     const lat = e.coord.lat();
     const lng = e.coord.lng();
     showRouteChoice(lat, lng, "선택한 위치");
   });
+};
+
+// ✅ 이벤트 제거 함수도 추가
+window.removeRouteEvents = function () {
+  if (mapClickListener) {
+    naver.maps.Event.removeListener(mapClickListener);
+    mapClickListener = null;
+  }
 };
 
 // ✅ 출/도 마커 선택 팝업

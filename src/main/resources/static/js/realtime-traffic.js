@@ -1,19 +1,20 @@
 (() => {
   let trafficPolylines = [];
+  let isTrafficVisible = false;
 
-  window.loadRealTimeTraffic = function () {
+  function loadRealTimeTraffic() {
     fetch('/api/proxy/traffic-data')
       .then(res => res.json())
       .then(data => {
         const links = data?.response?.body?.items?.item || [];
         links.forEach(drawTrafficSegment);
       });
-  };
+  }
 
-  window.clearRealTimeTraffic = function () {
+  function clearRealTimeTraffic() {
     trafficPolylines.forEach(p => p.setMap(null));
     trafficPolylines = [];
-  };
+  }
 
   function drawTrafficSegment(segment) {
     const path = segment.geometry?.coordinates?.map(([lng, lat]) => new naver.maps.LatLng(lat, lng));
@@ -51,4 +52,25 @@
     if (speed > 30) return "#ffbb33";
     return "#ff4444";
   }
+
+  // ✅ 실시간 교통 버튼 토글 이벤트
+  document.addEventListener("DOMContentLoaded", () => {
+    const trafficBtn = document.getElementById("sidebarTrafficBtn");
+    const legendBox = document.getElementById("trafficLegendBox");
+
+    if (!trafficBtn) return;
+
+    trafficBtn.addEventListener("click", () => {
+      if (isTrafficVisible) {
+        clearRealTimeTraffic();
+        trafficBtn.classList.remove("active");
+        if (legendBox) legendBox.style.display = "none";
+      } else {
+        loadRealTimeTraffic();
+        trafficBtn.classList.add("active");
+        if (legendBox) legendBox.style.display = "block";
+      }
+      isTrafficVisible = !isTrafficVisible;
+    });
+  });
 })();

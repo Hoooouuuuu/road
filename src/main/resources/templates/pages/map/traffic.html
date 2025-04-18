@@ -21,7 +21,7 @@
     const ITS_API_KEY = /*[[${itsApiKey}]]*/ '';
     window.ITS_API_KEY = ITS_API_KEY;
     /*]]>*/
-  </script>  
+  </script>
 
 </head>
 
@@ -130,9 +130,19 @@
           style="z-index: 999; top: 100%; display: none;">
         </ul>
       </div>
-
       <button class="btn btn-danger mt-2" onclick="resetRoutePanel()">🔁 초기화</button>
     </div>
+
+    <!-- ✅ 교통속도 범례 박스 (기본은 숨김) -->
+    <div id="trafficLegendBox" class="position-absolute bottom-0 end-0 m-3 p-2 bg-white shadow-sm rounded"
+      style="display: none; z-index: 1000;">
+      <strong>🚦 교통속도 범례</strong><br />
+      <span style="color:#00C851;">●</span> 빠름 (60km/h 이상)<br />
+      <span style="color:#ffbb33;">●</span> 보통 (30~60km/h)<br />
+      <span style="color:#ff4444;">●</span> 느림 (30km/h 이하)
+    </div>
+
+
     <!-- 로딩 스피너 -->
     <div id="loadingSpinner" class="text-center my-3" style="display: none;">
       <div class="spinner-border text-primary" role="status">

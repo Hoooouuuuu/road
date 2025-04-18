@@ -262,3 +262,8 @@ body.dark-mode #videoContainer .video-bottom-btn {
   border-radius: 10px;
   box-shadow: 0 0 6px rgba(0,0,0,0.2);
 }
+
+.sidebar button.active {
+  background-color: #0d6efd !important;
+  color: white;
+}
