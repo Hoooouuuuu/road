@@ -1,7 +1,9 @@
 package com.cctv.road.map.controller;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
+import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -29,11 +31,14 @@ public class NaverProxyController {
   @Value("${kakao.rest-api-key}")
   private String kakaoRestApiKey;
 
+  @Value("${its.api.key}")
+  private String itsApiKey;
+
   public NaverProxyController(WebClient.Builder builder) {
     this.naverClient = builder.baseUrl("https://naveropenapi.apigw.ntruss.com").build();
     this.seoulBusClient = builder.baseUrl("http://ws.bus.go.kr").build();
     this.kakaoClient = builder.baseUrl("https://dapi.kakao.com").build();
-}
+  }
 
   /**
    * ✅ 네이버 길찾기 API (지도 위 경로 탐색용)
@@ -105,23 +110,23 @@ public class NaverProxyController {
   public Mono<String> searchKakaoPlace(@RequestParam String query) {
     System.out.println("💬 kakaoRestApiKey = " + kakaoRestApiKey);
     System.out.println("💬 검색 키워드 = " + query);
-      return kakaoClient.get()
-          .uri(uriBuilder -> uriBuilder
-              .path("/v2/local/search/keyword.json")
-              .queryParam("query", query)
-              .build())
-          .header("Authorization", "KakaoAK " + kakaoRestApiKey)
-          .accept(MediaType.APPLICATION_JSON)
-          .retrieve()
-          .onStatus(status -> status.value() >= 400, res -> {
-              System.err.println("❌ 카카오 장소 검색 API 오류 상태코드: " + res.statusCode());
-              return res.bodyToMono(String.class).flatMap(error -> {
-                  System.err.println("❌ 응답 내용: " + error);
-                  return Mono.error(new RuntimeException("카카오 장소 검색 실패"));
-              });
-          })
-          .bodyToMono(String.class);
-  }  
+    return kakaoClient.get()
+        .uri(uriBuilder -> uriBuilder
+            .path("/v2/local/search/keyword.json")
+            .queryParam("query", query)
+            .build())
+        .header("Authorization", "KakaoAK " + kakaoRestApiKey)
+        .accept(MediaType.APPLICATION_JSON)
+        .retrieve()
+        .onStatus(status -> status.value() >= 400, res -> {
+          System.err.println("❌ 카카오 장소 검색 API 오류 상태코드: " + res.statusCode());
+          return res.bodyToMono(String.class).flatMap(error -> {
+            System.err.println("❌ 응답 내용: " + error);
+            return Mono.error(new RuntimeException("카카오 장소 검색 실패"));
+          });
+        })
+        .bodyToMono(String.class);
+  }
 
   /**
    * ✅ 서울시 버스 정류장 검색 API
@@ -171,6 +176,32 @@ public class NaverProxyController {
             .build())
         .accept(MediaType.APPLICATION_JSON)
         .retrieve()
+        .bodyToMono(String.class);
+  }
+
+  /**
+   * ✅ 국토교통부 ITS 실시간 도로 교통 정보 (평균 속도)
+   */
+  @GetMapping("/traffic-data")
+  public Mono<String> getTrafficData() {
+    String apiUrl = "https://apis.data.go.kr/1613000/ITS/getLinkTrafficSpeed" +
+        "?serviceKey=" + itsApiKey +
+        "&type=json" +
+        "&numOfRows=1000" +
+        "&pageNo=1" +
+        "&cityCode=11";
+
+    return WebClient.create()
+        .get()
+        .uri(apiUrl)
+        .accept(MediaType.APPLICATION_JSON)
+        .retrieve()
+        .onStatus(HttpStatusCode::isError, res -> {
+          return res.bodyToMono(String.class).flatMap(body -> {
+            System.err.println("❌ ITS API Error Response: " + body);
+            return Mono.error(new RuntimeException("ITS API 호출 실패: " + body));
+          });
+        })
         .bodyToMono(String.class);
   }
 }
