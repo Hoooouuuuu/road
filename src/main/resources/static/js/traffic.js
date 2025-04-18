@@ -1,23 +1,134 @@
 let map;
-let busPanelVisible = false;
 let busInterval = null;
-let bikePanelActive = false;
-let trafficLayerActive = false;
 let bikeRefreshTimeout = null;
 let lastBikeRefreshTime = 0;
+
+// ✅ 각 사이드 패널 상태 추적
+let panelStates = {
+  bus: false,
+  bike: false,
+  route: false,
+  traffic: false
+};
 
 document.addEventListener('DOMContentLoaded', () => {
   console.log('✅ DOMContentLoaded');
 
-  // ✅ 지도 초기화 (네이버 맵)
+  // ✅ 네이버 지도 초기화
   map = new naver.maps.Map('map', {
     center: new naver.maps.LatLng(37.5665, 126.9780),
     zoom: 14
   });
-
   window.map = map;
 
-  // ✅ 사이드바: CCTV 버튼
+  // ✅ 버튼별 기능 구성
+  const buttonConfigs = [
+    {
+      id: 'sidebarBusBtn',
+      key: 'bus',
+      panelId: 'busFilterPanel',
+      onActivate: () => {
+        console.log("🚌 버스 ON");
+        window.loadBusPositions?.();
+        busInterval = setInterval(window.loadBusPositions, 15000);
+      },
+      onDeactivate: () => {
+        console.log("🚌 버스 OFF");
+        window.clearBusMarkers?.();
+        clearInterval(busInterval);
+        busInterval = null;
+      }
+    },
+    {
+      id: 'sidebarBikeBtn',
+      key: 'bike',
+      onActivate: () => {
+        console.log("🚲 따릉이 ON");
+        panelStates.bike = true; // ✅ 지도 idle 시 조건에 꼭 필요
+        window.moveToMyLocation?.();
+      },
+      onDeactivate: () => {
+        console.log("🚲 따릉이 OFF");
+        panelStates.bike = false; // ✅ 상태를 false로 설정 안 하면 지도 idle에서 계속 실행됨
+        window.clearBikeStations?.();
+        if (window.userPositionMarker) {
+          window.userPositionMarker.setMap(null);
+          window.userPositionMarker = null;
+        }
+      }
+    },
+    {
+      id: 'sidebarRouteBtn',
+      key: 'route',
+      panelId: 'routeFilterPanel',
+      onActivate: () => {
+        console.log("🚶‍➡️ 경로 ON");
+        window.setStartToCurrentLocation?.();
+        window.initRouteEvents?.();
+      },
+      onDeactivate: () => {
+        console.log("🚶‍➡️ 경로 OFF");
+        window.clearRoute?.();
+        window.clearRouteMarkers?.();
+        window.removeRouteEvents?.();
+      }
+    },
+    {
+      id: 'sidebarTrafficBtn',
+      key: 'traffic',
+      onActivate: () => {
+        console.log("🚦 실시간 교통 ON");
+        window.loadRealTimeTraffic?.();
+        const legendBox = document.getElementById('trafficLegendBox');
+        if (legendBox) legendBox.style.display = 'block';
+      },
+      onDeactivate: () => {
+        console.log("🚦 실시간 교통 OFF");
+        window.clearRealTimeTraffic?.();
+        const legendBox = document.getElementById('trafficLegendBox');
+        if (legendBox) legendBox.style.display = 'none'; // ✅ 여기 추가!
+      }
+    }    
+  ];
+
+  // ✅ 모든 사이드 버튼 공통 처리
+  buttonConfigs.forEach(({ id, key, panelId, onActivate, onDeactivate }) => {
+    const button = document.getElementById(id);
+    if (!button) return;
+
+    button.addEventListener('click', () => {
+      const isActivating = !panelStates[key];
+
+      // ✅ CCTV 패널은 항상 OFF
+      const cctvPanel = document.getElementById('cctvFilterPanel');
+      if (cctvPanel) cctvPanel.style.display = 'none';
+      window.clearCctvMarkers?.();
+      document.getElementById('roadSearchInput').value = '';
+      document.getElementById('roadList').innerHTML = '';
+
+      // ✅ 모든 패널 상태 false 및 비활성화 처리
+      for (const k in panelStates) {
+        panelStates[k] = false;
+        document.getElementById(`sidebar${capitalize(k)}Btn`)?.classList.remove('active');
+        const pnl = document.getElementById(`${k}FilterPanel`);
+        if (pnl) pnl.style.display = 'none';
+      }
+
+      // ✅ 모든 기능 해제
+      buttonConfigs.forEach(conf => conf.onDeactivate?.());
+
+      // ✅ 클릭한 버튼만 ON 처리
+      if (isActivating) {
+        panelStates[key] = true;
+        button.classList.add('active');
+        const panel = document.getElementById(panelId);
+        if (panel) panel.style.display = 'block';
+        onActivate?.();
+      }
+    });
+  });
+
+  // ✅ CCTV는 독립적이며 토글 방식
   document.getElementById('sidebarCctvBtn')?.addEventListener('click', () => {
     const panel = document.getElementById('cctvFilterPanel');
     const isVisible = getComputedStyle(panel).display !== 'none';
@@ -30,91 +141,48 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('roadSearchInput').value = '';
       document.getElementById('roadList').innerHTML = '';
     }
-  });
 
-  // ✅ 사이드바: 버스 버튼
-  document.getElementById('sidebarBusBtn')?.addEventListener('click', () => {
-    const panel = document.getElementById('busFilterPanel');
-    if (!panel) return console.warn("❌ busFilterPanel 없음");
-
-    busPanelVisible = !busPanelVisible;
-    panel.style.display = busPanelVisible ? 'block' : 'none';
-
-    if (busPanelVisible) {
-      window.loadBusPositions?.();
-      busInterval = setInterval(window.loadBusPositions, 15000);
-    } else {
-      window.clearBusMarkers?.();
-      clearInterval(busInterval);
-      busInterval = null;
+    // ✅ 여기도 bike 끄기 강제 보장
+    panelStates.bike = false;
+    window.clearBikeStations?.();
+    if (window.userPositionMarker) {
+      window.userPositionMarker.setMap(null);
+      window.userPositionMarker = null;
     }
   });
 
-  // ✅ 사이드바: 따릉이 버튼
-  document.getElementById('sidebarBikeBtn')?.addEventListener('click', () => {
-    bikePanelActive = !bikePanelActive;
+  // ✅ 지도 이동 시 따릉이 자동 새로고침 (디바운스)
+  naver.maps.Event.addListener(map, 'idle', () => {
+    if (!panelStates.bike) return;
 
-    if (bikePanelActive) {
-      console.log("🚲 따릉이 ON");
-      window.moveToMyLocation?.();
-    } else {
-      console.log("🚲 따릉이 OFF");
-      window.clearBikeStations?.();
-      if (window.userPositionMarker) {
-        window.userPositionMarker.setMap(null);
-        window.userPositionMarker = null;
-      }
-    }
+    const now = Date.now();
+    const elapsed = now - lastBikeRefreshTime;
+
+    if (elapsed < 5000) return;
+    clearTimeout(bikeRefreshTimeout);
+
+    bikeRefreshTimeout = setTimeout(() => {
+      console.log("🚲 지도 이동에 따라 따릉이 새로고침");
+      window.loadBikeStations?.();
+      lastBikeRefreshTime = Date.now();
+    }, 500);
   });
 
-  // ✅ 사이드바: 길찾기 버튼 클릭 시 - 패널 열고 지도 클릭 이벤트 등록/해제
-  document.getElementById('sidebarRouteBtn')?.addEventListener('click', () => {
-    const panel = document.getElementById('routeFilterPanel');
-    const isVisible = panel.style.display === 'block';
-    panel.style.display = isVisible ? 'none' : 'block';
-
-    if (!isVisible) {
-      // ✅ 길찾기 시작 시: 출발지를 내 위치로 설정하고 지도 클릭 이벤트 활성화
-      window.setStartToCurrentLocation?.();
-      window.initRouteEvents?.(); // ✅ 길찾기: 지도 클릭 시 출/도 설정
-    } else {
-      // ✅ 길찾기 닫을 때: 경로, 마커, 이벤트 해제
-      window.clearRoute?.();
-      window.clearRouteMarkers?.();
-      window.removeRouteEvents?.(); // ✅ 길찾기: 지도 클릭 이벤트 제거
-    }
-  });
-
-  // ✅ 사이드바: 실시간 교통 버튼
-  document.getElementById('sidebarTrafficBtn')?.addEventListener('click', () => {
-    trafficLayerActive = !trafficLayerActive;
-
-    if (trafficLayerActive) {
-      console.log("🚦 실시간 교통 ON");
-      window.loadRealTimeTraffic?.();
-    } else {
-      console.log("🚦 실시간 교통 OFF");
-      window.clearRealTimeTraffic?.();
-    }
-  });
-
-  // ✅ CCTV 영상 닫기 버튼
+  // ✅ CCTV 영상 제어
   document.getElementById('closeVideoBtn')?.addEventListener('click', () => {
     window.hideVideo?.();
   });
 
-  // ✅ CCTV 전체화면 버튼
   document.getElementById('fullscreenBtn')?.addEventListener('click', () => {
     document.getElementById('cctvVideo')?.requestFullscreen?.();
   });
 
-  // ✅ CCTV 새창 열기 버튼
   document.getElementById('openNewTabBtn')?.addEventListener('click', () => {
     const videoUrl = window.currentVideoUrl;
     const title = document.getElementById('videoTitle')?.textContent || 'CCTV';
     if (!videoUrl) return;
 
-    const encodedUrl = encodeURIComponent(videoUrl); // ✅ 안전 처리
+    const encodedUrl = encodeURIComponent(videoUrl);
 
     const win = window.open('', '_blank', 'width=800,height=600');
     win.document.write(`
@@ -137,23 +205,9 @@ document.addEventListener('DOMContentLoaded', () => {
       </script></body></html>
     `);
   });
-
-  // ✅ 지도 이동(idle) 시 따릉이 마커 갱신 (디바운스 + 최소 주기 제한)
-  naver.maps.Event.addListener(map, 'idle', () => {
-    if (!bikePanelActive) return;
-
-    const now = Date.now();
-    const elapsed = now - lastBikeRefreshTime;
-
-    if (elapsed < 5000) return; // 최소 5초 간격
-    clearTimeout(bikeRefreshTimeout);
-
-    bikeRefreshTimeout = setTimeout(() => {
-      console.log("🚲 지도 이동에 따라 따릉이 새로고침");
-      window.loadBikeStations?.();
-      lastBikeRefreshTime = Date.now();
-    }, 500);
-  });
-
-  // ✅ 초기 실행 시에는 길찾기 이벤트 등록 안 함 (버튼 클릭 시에만 등록됨으로 변경됨)
 });
+
+// ✅ 문자열 첫 글자 대문자 변환
+function capitalize(str) {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}

@@ -1,14 +1,15 @@
 package com.cctv.road.map.controller;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.reactive.function.client.ExchangeStrategies;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import reactor.core.publisher.Mono;
@@ -184,27 +185,27 @@ public class NaverProxyController {
    * ✅ 국토교통부 ITS 실시간 도로 교통 정보 (평균 속도)
    */
   @GetMapping("/traffic-data")
-  public Mono<String> getTrafficData() {
-    String url = "https://openapi.its.go.kr:9443/vdsInfo?apiKey=" + itsApiKey + "&getType=json";
-  
-    WebClient trafficClient = WebClient.builder().baseUrl("https://openapi.its.go.kr:9443").build();
-  
+  public Mono<String> getTrafficData(@RequestParam String bbox) {
+    String timestamp = LocalDateTime.now().minusMinutes(5)
+        .format(DateTimeFormatter.ofPattern("yyyyMMddHHmm"));
+
+    WebClient trafficClient = WebClient.builder()
+        .baseUrl("https://openapi.its.go.kr:9443")
+        .exchangeStrategies(ExchangeStrategies.builder()
+            .codecs(config -> config.defaultCodecs().maxInMemorySize(5 * 1024 * 1024))
+            .build())
+        .build();
+
     return trafficClient.get()
         .uri(uriBuilder -> uriBuilder
-            .path("/vdsInfo")
+            .path("/trafficInfo")
             .queryParam("apiKey", itsApiKey)
             .queryParam("getType", "json")
+            .queryParam("type", "all")
+            .queryParam("req_yyyymmddhhmi", timestamp)
+            .queryParam("bbox", bbox) // ✅ 지도 범위 좌표
             .build())
-        .accept(MediaType.APPLICATION_JSON)
         .retrieve()
-        .onStatus(status -> status.isError(), res -> {
-          System.err.println("❌ ITS API 호출 실패: " + res.statusCode());
-          return res.bodyToMono(String.class)
-              .flatMap(error -> {
-                System.err.println("❌ 응답 내용: " + error);
-                return Mono.error(new RuntimeException("ITS API 호출 에러"));
-              });
-        })
         .bodyToMono(String.class);
-  }  
+  }
 }
