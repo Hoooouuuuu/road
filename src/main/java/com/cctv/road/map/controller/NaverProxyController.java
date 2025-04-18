@@ -16,6 +16,7 @@ public class NaverProxyController {
 
   private final WebClient naverClient;
   private final WebClient seoulBusClient;
+  private final WebClient kakaoClient;
 
   private final String API_KEY = "%2BeQx9OSSFJWXxpa7KLX3uCtS5jFahsaCrTIztoPznu%2FEWJIcRbbojkhQAPcyIwzLvyjwqgi5AmSMqv8A5IoOYg%3D%3D";
 
@@ -25,10 +26,14 @@ public class NaverProxyController {
   @Value("${naver.map.client-secret}")
   private String naverClientSecret;
 
+  @Value("${kakao.rest-api-key}")
+  private String kakaoRestApiKey;
+
   public NaverProxyController(WebClient.Builder builder) {
     this.naverClient = builder.baseUrl("https://naveropenapi.apigw.ntruss.com").build();
     this.seoulBusClient = builder.baseUrl("http://ws.bus.go.kr").build();
-  }
+    this.kakaoClient = builder.baseUrl("https://dapi.kakao.com").build();
+}
 
   /**
    * ✅ 네이버 길찾기 API (지도 위 경로 탐색용)
@@ -74,18 +79,49 @@ public class NaverProxyController {
   @GetMapping("/naver-place")
   public Mono<String> searchPlace(@RequestParam String query) {
     System.out.println("➡️ 검색 요청 URL: /map-place/v1/search?query=" + query);
+
     return naverClient.get()
         .uri(uriBuilder -> uriBuilder
             .path("/map-place/v1/search")
             .queryParam("query", query)
-            .queryParam("coordinate", "127.1054328,37.3595953") // 현재 좌표 넣으면 정확도 향상됨
+            .queryParam("coordinate", "127.1054328,37.3595953") // 중심좌표 옵션
             .build())
         .header("X-NCP-APIGW-API-KEY-ID", naverClientId)
         .header("X-NCP-APIGW-API-KEY", naverClientSecret)
         .accept(MediaType.APPLICATION_JSON)
         .retrieve()
+        .onStatus(status -> status.value() >= 400, res -> {
+          System.err.println("❌ 네이버 장소 검색 API 오류 상태코드: " + res.statusCode());
+          return res.bodyToMono(String.class).flatMap(error -> {
+            System.err.println("❌ 응답 내용: " + error);
+            return Mono.error(new RuntimeException("네이버 장소 검색 실패"));
+          });
+        })
         .bodyToMono(String.class);
   }
+
+  // 카카오맵에서 검색기능만 사용
+  @GetMapping("/kakao-place")
+  public Mono<String> searchKakaoPlace(@RequestParam String query) {
+    System.out.println("💬 kakaoRestApiKey = " + kakaoRestApiKey);
+    System.out.println("💬 검색 키워드 = " + query);
+      return kakaoClient.get()
+          .uri(uriBuilder -> uriBuilder
+              .path("/v2/local/search/keyword.json")
+              .queryParam("query", query)
+              .build())
+          .header("Authorization", "KakaoAK " + kakaoRestApiKey)
+          .accept(MediaType.APPLICATION_JSON)
+          .retrieve()
+          .onStatus(status -> status.value() >= 400, res -> {
+              System.err.println("❌ 카카오 장소 검색 API 오류 상태코드: " + res.statusCode());
+              return res.bodyToMono(String.class).flatMap(error -> {
+                  System.err.println("❌ 응답 내용: " + error);
+                  return Mono.error(new RuntimeException("카카오 장소 검색 실패"));
+              });
+          })
+          .bodyToMono(String.class);
+  }  
 
   /**
    * ✅ 서울시 버스 정류장 검색 API

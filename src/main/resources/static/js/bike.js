@@ -7,6 +7,9 @@ let bikeRouteLabel = null;    // 경로 시간 라벨
 window.userPositionMarker = null;
 window.recommendedStation = null;
 window.activeInfoWindow = null;
+window.userLat = null;
+window.userLng = null;
+window.skipBikeRecommendation = false;
 
 // ✅ 마커 모두 제거
 window.clearBikeStations = function () {
@@ -47,9 +50,10 @@ window.moveToMyLocation = function (skipRecommendation = false) {
   if (!navigator.geolocation) return alert("위치 정보를 지원하지 않습니다.");
 
   navigator.geolocation.getCurrentPosition(pos => {
-    const userLat = pos.coords.latitude;
-    const userLng = pos.coords.longitude;
-    const userPos = new naver.maps.LatLng(userLat, userLng);
+    // ✅ 전역으로 위치 저장
+    window.userLat = pos.coords.latitude;
+    window.userLng = pos.coords.longitude;
+    const userPos = new naver.maps.LatLng(window.userLat, window.userLng);
 
     if (window.userPositionMarker) window.userPositionMarker.setMap(null);
     window.userPositionMarker = new naver.maps.Marker({
@@ -61,44 +65,55 @@ window.moveToMyLocation = function (skipRecommendation = false) {
 
     map.panTo(userPos);
 
-    if (skipRecommendation) return;
+    // ✅ 대여소 불러오기 (비동기)
+    window.loadBikeStations();
 
-    const nearby = bikeMarkers
-      .map(m => ({
-        ...m,
-        distance: getDistance(userLat, userLng, m.position.lat(), m.position.lng())
-      }))
-      .filter(m => m.distance <= 500)
-      .sort((a, b) => a.distance - b.distance);
-
-    if (!nearby.length) return alert('500m 이내에 추천 가능한 대여소가 없습니다.');
-
-    const best = nearby[0];
-    window.recommendedStation = {
-      stationLatitude: best.position.lat(),
-      stationLongitude: best.position.lng(),
-      stationName: best.name
-    };
-
-    map.panTo(best.position);
-
-    const content = `
-      <div style="padding:8px; font-size:14px; line-height:1.6;">
-        <strong style="color:#0d6efd;">🚲 추천 대여소: ${best.name}</strong><br/>
-        거리: ${Math.round(best.distance)}m<br/>
-        <div class="mt-2 d-flex gap-2">
-          <button onclick="goToNaverRoute()" class="btn btn-sm btn-outline-primary">🧭 안내</button>
-        </div>
-      </div>
-    `;
-
-    if (window.activeInfoWindow) window.activeInfoWindow.close();
-    window.activeInfoWindow = new naver.maps.InfoWindow({
-      content,
-      position: best.position
-    });
-    window.activeInfoWindow.open(map, best.marker);
+    // ✅ 추천 생략 옵션 처리 (true면 추천 안 함)
+    window.skipBikeRecommendation = skipRecommendation;
   }, () => alert("위치 정보를 가져올 수 없습니다."));
+};
+
+window.recommendNearestStation = function () {
+  if (!window.userLat || !window.userLng) return;
+
+  const nearby = bikeMarkers
+    .map(m => ({
+      ...m,
+      distance: getDistance(window.userLat, window.userLng, m.position.lat(), m.position.lng())
+    }))
+    .filter(m => m.distance <= 500)
+    .sort((a, b) => a.distance - b.distance);
+
+  if (!nearby.length) {
+    alert('500m 이내에 추천 가능한 대여소가 없습니다.');
+    return;
+  }
+
+  const best = nearby[0];
+  window.recommendedStation = {
+    stationLatitude: best.position.lat(),
+    stationLongitude: best.position.lng(),
+    stationName: best.name
+  };
+
+  map.panTo(best.position);
+
+  const content = `
+    <div style="padding:8px; font-size:14px; line-height:1.6;">
+      <strong style="color:#0d6efd;">🚲 추천 대여소: ${best.name}</strong><br/>
+      거리: ${Math.round(best.distance)}m<br/>
+      <div class="mt-2 d-flex gap-2">
+        <button onclick="goToNaverRoute()" class="btn btn-sm btn-outline-primary">🧭 안내</button>
+      </div>
+    </div>
+  `;
+
+  if (window.activeInfoWindow) window.activeInfoWindow.close();
+  window.activeInfoWindow = new naver.maps.InfoWindow({
+    content,
+    position: best.position
+  });
+  window.activeInfoWindow.open(map, best.marker);
 };
 
 // ✅ 내부 길찾기
@@ -171,9 +186,14 @@ window.loadBikeStations = function () {
     .then(res => res.json())
     .then(data => {
       allBikeStations = data?.rentBikeStatus?.row || [];
-      console.log("✅ 따릉이 수:", allBikeStations.length); // ✅ 이거 꼭 찍어봐!
+      console.log("✅ 따릉이 수:", allBikeStations.length);
       window.renderVisibleBikeMarkers();
       console.log("🗺️ 현재 bounds:", map.getBounds());
+
+      // ✅ 내 위치와 추천이 허용된 상태면 추천 실행
+      if (!window.skipBikeRecommendation && window.userLat && window.userLng) {
+        window.recommendNearestStation();
+      }
     })
     .catch(err => {
       console.error("❌ 따릉이 API 오류", err);

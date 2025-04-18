@@ -94,6 +94,7 @@
       </div>
       <ul id="roadList" class="list-group"></ul>
     </div>
+
     <!-- 🚌 버스 검색 패널 -->
     <div id="busFilterPanel" style="display: none;">
       <div class="input-group mb-3">
@@ -106,14 +107,24 @@
     <!-- 길찾기 패널 -->
     <div id="routeFilterPanel" style="display:none;">
       <h5>🧭 길찾기</h5>
-      <div class="form-group">
-        <label for="routeDestination">장소 검색</label>
-        <input id="routeDestination" type="text" class="form-control" placeholder="도착지 또는 검색지 입력" />
+      <!-- 출발지 -->
+      <div class="mb-3 position-relative">
+        <label class="form-label">🚩 출발지</label>
+        <input type="text" id="startPointLabel" class="form-control" placeholder="출발지를 입력하세요" autocomplete="off">
+        <ul id="startResultList" class="list-group position-absolute w-100" style="z-index: 999; top: 100%; display: none;">
+        </ul>
       </div>
-      <button class="btn btn-primary mt-2" onclick="searchDestination()">검색</button>
-      <button class="btn btn-secondary mt-2" onclick="clearRoute()">초기화</button>
-    </div>
     
+      <!-- 도착지 -->
+      <div class="mb-3 position-relative">
+        <label class="form-label">🎯 도착지</label>
+        <input type="text" id="goalPointLabel" class="form-control" placeholder="도착지를 입력하세요" autocomplete="off">
+        <ul id="goalResultList" class="list-group position-absolute w-100" style="z-index: 999; top: 100%; display: none;">
+        </ul>
+      </div>
+    
+      <button class="btn btn-danger mt-2" onclick="resetRoutePanel()">🔁 초기화</button>
+    </div>
     <!-- 로딩 스피너 -->
     <div id="loadingSpinner" class="text-center my-3" style="display: none;">
       <div class="spinner-border text-primary" role="status">

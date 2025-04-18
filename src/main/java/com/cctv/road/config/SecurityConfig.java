@@ -8,6 +8,7 @@ import org.springframework.security.authentication.dao.DaoAuthenticationProvider
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configuration.WebSecurityCustomizer;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
@@ -57,6 +58,11 @@ public class SecurityConfig {
   }
 
   @Bean
+  public WebSecurityCustomizer webSecurityCustomizer() {
+    return web -> web.ignoring().requestMatchers("/api/proxy/**");
+  }
+
+  @Bean
   public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
     http
         .csrf(csrf -> csrf
@@ -64,9 +70,10 @@ public class SecurityConfig {
         .authenticationProvider(authenticationProvider())
         .authorizeHttpRequests(auth -> auth
             .requestMatchers("/", "/home", "/login", "/register/**", "/css/**", "/js/**", "/image/**", "/favicon.ico",
-                "/json/**", "/pages/**", "/api/**")
+                "/json/**", "/pages/**", "/api/**", "/api/proxy/**")
             .permitAll()
-            .requestMatchers("/member/mypage", "/member/update", "/member/update/**").authenticated() // ✅ 마이페이지는 로그인 사용자만
+            .requestMatchers("/member/mypage", "/member/update", "/member/update/**").authenticated() // ✅ 마이페이지는 로그인
+                                                                                                      // 사용자만
             .requestMatchers("/admin/**").hasRole("ADMIN") // ✅ 관리자 경로 예시
             .anyRequest().authenticated())
         .formLogin(form -> form

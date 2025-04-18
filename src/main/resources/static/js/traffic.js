@@ -32,6 +32,8 @@ document.addEventListener('DOMContentLoaded', () => {
     zoom: 14
   });
 
+  window.map = map;
+
   // ✅ 혹은 다음과 같이 안전하게 처리
   if (typeof marker !== 'undefined') {
     naver.maps.Event.addListener(marker, 'click', function () {
@@ -94,7 +96,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (bikePanelActive) {
       console.log("🚲 따릉이 ON");
       window.moveToMyLocation();          // 내 위치로 이동
-      window.loadBikeStations();         // 마커 로딩
     } else {
       console.log("🚲 따릉이 OFF");
       window.clearBikeStations();        // 마커 제거
@@ -110,6 +111,11 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('sidebarRouteBtn').addEventListener('click', () => {
     const panel = document.getElementById('routeFilterPanel');
     const isVisible = getComputedStyle(panel).display !== 'none';
+
+    // ✅ 내 위치를 출발지로 자동 세팅
+    if (!window.routeStart.lat || !window.routeStart.lng) {
+      window.setStartToCurrentLocation();
+    }    
 
     if (!isVisible) {
       console.log("🧭 길찾기 패널 ON");
