@@ -110,22 +110,17 @@ document.addEventListener('DOMContentLoaded', () => {
   // 길찾기
   document.getElementById('sidebarRouteBtn').addEventListener('click', () => {
     const panel = document.getElementById('routeFilterPanel');
-    const isVisible = getComputedStyle(panel).display !== 'none';
-
-    // ✅ 내 위치를 출발지로 자동 세팅
-    if (!window.routeStart.lat || !window.routeStart.lng) {
-      window.setStartToCurrentLocation();
-    }    
-
+    const isVisible = panel.style.display === 'block';
+  
+    panel.style.display = isVisible ? 'none' : 'block';
+  
     if (!isVisible) {
-      console.log("🧭 길찾기 패널 ON");
-      panel.style.display = 'flex';
+      setStartToCurrentLocation(); // 패널 열 때 내 위치 마커 그리기
     } else {
-      console.log("🧭 길찾기 패널 OFF");
-      panel.style.display = 'none';
-      resetRoutePanel();
+      clearRoute();                // 경로 제거
+      clearRouteMarkers(true);    // 마커 전부 제거 (내 위치도 포함)
     }
-  });
+  });  
 
 
 document.getElementById('closeVideoBtn')?.addEventListener('click', hideVideo);

@@ -5,6 +5,8 @@ let routeClickMarker = null;
 let routeClickInfoWindow = null;
 let routeActive = false;
 let searchTimeout = null;
+let startMarker = null;
+let goalMarker = null;
 
 // ✅ 출발지 / 도착지 전역 상태
 window.routeStart = { lat: null, lng: null, label: "내 위치" };
@@ -24,12 +26,11 @@ window.setStartToCurrentLocation = function () {
     const position = new naver.maps.LatLng(lat, lng);
 
     if (myLocationMarker) myLocationMarker.setMap(null);
-
     myLocationMarker = new naver.maps.Marker({
       position,
       map,
       icon: {
-        content: `<div style="font-size: 24px;">🚩</div>`,
+        content: `<div style="font-size: 24px;">🧍</div>`,
         anchor: new naver.maps.Point(12, 12)
       },
       title: "내 위치"
@@ -39,7 +40,7 @@ window.setStartToCurrentLocation = function () {
   });
 };
 
-// ✅ 경로 이벤트
+// ✅ 경로 클릭 이벤트
 window.initRouteEvents = function () {
   naver.maps.Event.addListener(window.map, 'click', function (e) {
     const lat = e.coord.lat();
@@ -55,10 +56,7 @@ window.showRouteChoice = function (lat, lng, label) {
 
   const position = new naver.maps.LatLng(lat, lng);
 
-  routeClickMarker = new naver.maps.Marker({
-    position,
-    map: window.map
-  });
+  routeClickMarker = new naver.maps.Marker({ position, map });
 
   const content = `
     <div style="text-align:center; min-width:160px;">
@@ -118,24 +116,50 @@ window.findDirection = function (startLat, startLng, goalLat, goalLng) {
     });
 };
 
-// ✅ 출발지/도착지 설정
+// ✅ 출/도 설정
 window.setAsStart = function (lat, lng, label) {
+  if (startMarker) startMarker.setMap(null);
+
   routeStart = { lat, lng, label };
   document.getElementById('startPointLabel').value = label;
+
+  startMarker = new naver.maps.Marker({
+    position: new naver.maps.LatLng(lat, lng),
+    map,
+    icon: {
+      content: `<div style="font-size: 32px;">🚩</div>`,
+      anchor: new naver.maps.Point(16, 32)
+    },
+    title: "출발지"
+  });
+
   tryFindRoute();
 };
 
 window.setAsGoal = function (lat, lng, label) {
+  if (goalMarker) goalMarker.setMap(null);
+
   routeGoal = { lat, lng, label };
   document.getElementById('goalPointLabel').value = label;
 
+  goalMarker = new naver.maps.Marker({
+    position: new naver.maps.LatLng(lat, lng),
+    map,
+    icon: {
+      content: `<div style="font-size: 32px;">🎯</div>`,
+      anchor: new naver.maps.Point(16, 32)
+    },
+    title: "도착지"
+  });
+
   if (!routeStart.lat || !routeStart.lng) {
-    window.setStartToCurrentLocation();
+    window.setStartToCurrentLocation(); // fallback
   }
 
   tryFindRoute();
 };
 
+// ✅ 경로 탐색 실행
 function tryFindRoute() {
   if (routeStart.lat && routeGoal.lat) {
     findDirection(routeStart.lat, routeStart.lng, routeGoal.lat, routeGoal.lng);
@@ -143,7 +167,7 @@ function tryFindRoute() {
   }
 }
 
-// ✅ 경로 초기화
+// ✅ 경로 및 마커 초기화
 window.clearRoute = function () {
   if (directionPolyline) directionPolyline.setMap(null);
   if (directionInfoWindow) directionInfoWindow.close();
@@ -152,8 +176,16 @@ window.clearRoute = function () {
   routeActive = false;
 };
 
+window.clearRouteMarkers = function () {
+  if (startMarker) startMarker.setMap(null), startMarker = null;
+  if (goalMarker) goalMarker.setMap(null), goalMarker = null;
+  if (routeClickMarker) routeClickMarker.setMap(null), routeClickMarker = null;
+  if (routeClickInfoWindow) routeClickInfoWindow.close(), routeClickInfoWindow = null;
+};
+
 window.resetRoutePanel = function () {
   clearRoute();
+  clearRouteMarkers();
 
   document.getElementById('startPointLabel').value = '';
   document.getElementById('goalPointLabel').value = '';
@@ -165,7 +197,7 @@ window.resetRoutePanel = function () {
   window.setStartToCurrentLocation();
 };
 
-// ✅ 공통 자동완성 바인딩 함수
+// ✅ 자동완성
 function setupAutoComplete(inputId, resultListId, isStart) {
   const input = document.getElementById(inputId);
   const resultList = document.getElementById(resultListId);
@@ -206,13 +238,8 @@ function setupAutoComplete(inputId, resultListId, isStart) {
               resultList.innerHTML = '';
               resultList.style.display = 'none';
 
-              const pos = new naver.maps.LatLng(lat, lng);
-              map.panTo(pos);
-
-              if (isStart) setAsStart(lat, lng, label);
-              else setAsGoal(lat, lng, label);
-
-              new naver.maps.Marker({ position: pos, map, title: label });
+              map.panTo(new naver.maps.LatLng(lat, lng));
+              isStart ? setAsStart(lat, lng, label) : setAsGoal(lat, lng, label);
             });
 
             resultList.appendChild(li);
@@ -224,7 +251,7 @@ function setupAutoComplete(inputId, resultListId, isStart) {
   });
 }
 
-// ✅ 자동완성 초기화
+// ✅ 자동완성 바인딩
 document.addEventListener("DOMContentLoaded", () => {
   setupAutoComplete('startPointLabel', 'startResultList', true);
   setupAutoComplete('goalPointLabel', 'goalResultList', false);
